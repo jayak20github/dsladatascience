@@ -1,0 +1,308 @@
+---
+title: '#Brexit data analysis'
+author: "Sushil Bhatia, Jaya K and Nazima Khan"
+date: "July 29, 2017"
+output: html_document
+---
+
+### 
+
+### Objective
+* Brexit is the term for the potential or hypothetical departure of United Kingdom from European Union.
+
+On June 23 2016, people of Britan voted for a Britan exit in a historic referendum.
+
+We analyzed tweets on #brexit from Apr 15 2016 -  Jul 29 2016 to understand the sentiments of the people.
+
+
+
+### Dataset Information:
+####
+Extract tweets on brexit from London city, dated April 15th 2016 (when the campain started officially)- until July 29th 2017 # Source : http://www.businessinsider.com/brexit-campaign-starts-april-15-2016-4 
+
+
+### Analysis Details.......
+* Part 1 : 
+
+1. Extract tweets on brexit from London city, dated April 15th 2016 (when the campain started officially)- until July 29th 2017.
+2. Look at the tweet status source and plotted the source platform.
+3. Clean the tweets and removed stop words.
+4. Find the frequency of words and  visulaize the word cloud.
+
+* Part 2 : Data Exploration for Sentimental Analysis
+1. Find data associations for term - remain, leave
+2. Score the sentiment against positive and negative words
+3. Visualize the sentiments of the tweets
+
+
+### Environment Setup
+```{r,include=TRUE,warning=FALSE,message=FALSE}
+setwd("C:/DSLA/Twitter/Brexit_analysis")
+
+# Load the required packages (if packages are not available, install them first)
+library(ggplot2)
+library(dplyr)
+library(readr)
+library(wordcloud)
+library(twitteR)
+library(ROAuth)
+
+#Setup Oauth for Twitter
+download.file(url='http://curl.haxx.se/ca/cacert.pem', destfile='cacert.pem')
+reqURL <- 'https://api.twitter.com/oauth/request_token'
+accessURL <- 'https://api.twitter.com/oauth/access_token'
+authURL <- 'https://api.twitter.com/oauth/authorize'
+api_key <- "hlAjtdkJOB54w2LC4x6ftsRvB"
+api_secret <- "4sScLwshSWEoiBKBjxubyMM4e6ld1EWCCBJrhAXqJzPCkFAMYn"
+access_token <- "46191603-3hCgFGfjbzGwyvx5etEbCYsjcwMaODDnd9d5ZFnLP"
+access_token_secret <- "X5xjJnSAIF5ABo0V8vACRCacb1cwHB2gmnI5OIA7kV6pE"
+consumerKey <- "JFBFPNlqA0SCx4zmejxh1hb2e"
+consumerSecret <- "Fod7JEric6CrtcHOBi3VyMMVnyLmG2dAzOcq36pBQM0uq30Ne5"
+
+
+#Cred <- setup_twitter_oauth(api_key,api_secret,access_token,access_token_secret)
+Cred <- OAuthFactory$new(consumerKey=consumerKey,
+                         consumerSecret=consumerSecret,
+                         requestURL=reqURL,
+                         accessURL=accessURL, 
+                         authURL=authURL)
+
+save(Cred, file='twitter authentication.Rdata')
+load('twitter authentication.Rdata') #Once you launched the code first time, you can start from this line in the future (libraries should be connected)
+setup_twitter_oauth(consumerKey, consumerSecret, access_token=NULL, access_secret=NULL)
+```
+
+### Extract, Import and Read
+```{r,include=TRUE,warning=FALSE,message=FALSE}
+
+# Extract tweets on brexit from London city, dated April 15th 2016 (when the campain started officially)- until July 29th 2017 # Source : http://www.businessinsider.com/brexit-campaign-starts-april-15-2016-4 
+
+brexit_tweets <-  searchTwitteR("brexit", n=3000, lang='en',since='2015-04-15', until = '2017-07-29') #geocode= "51.507351,-0.127758,60km") # eg geocode  for London city
+```
+
+### Convert the list of tweets into a data frame
+```{r,include=TRUE,warning=FALSE,message=FALSE}
+
+brexit_tweetDF<-twListToDF(brexit_tweets)
+head(brexit_tweetDF)
+brexit_tweetDF<-as.tbl(brexit_tweetDF)
+head(brexit_tweetDF)
+setwd("C:/DSLA/Twitter/Brexit_analysis")
+write.csv(brexit_tweetDF, file = paste("C:/DSLA/Twitter/Brexit_analysis/brexit_tweetDF.csv"), row.names = TRUE)
+head(brexit_tweetDF)
+```
+
+### Take a look at the tweet status source
+```{r,include=TRUE,warning=FALSE,message=FALSE}
+
+# Get source of tweets from statusSource
+library(tidyr)
+head(brexit_tweetDF$statusSource,20)
+
+# Extract iPhone and Android updates
+brexit_tweets_tbl <- brexit_tweetDF %>%
+  select(id, statusSource, text, created) %>%
+  tidyr::extract(statusSource, "source", "Twitter for (.*?)<")%>%
+  filter(source %in% c("iPhone", "Android","iPad")) 
+head(brexit_tweets_tbl)
+
+# Plot the source platforms
+qplot(brexit_tweets_tbl$source, xlab = "Source of Tweets",geom = "bar" ,
+      fill=I("lightblue"), 
+      col=I("black"))
+
+# We can see most number of tweets are from "iphone"
+```
+
+### Data Munging
+```{r,include=TRUE,warning=FALSE,message=FALSE}
+# Transform the text of tweets into Document Term Matrix
+# First clean the text
+library(tm)
+
+# Create a collection of documents with each tweet text is a row
+# Remove some special characters like smilies to help cleaning
+brexit_tweetDF$text<-sapply(brexit_tweetDF$text,function(x) iconv(x ,to="UTF-8",sub = "" ))
+brexit_tweetCorpus <- Corpus(VectorSource(brexit_tweetDF$text))
+```
+
+### Text Filtering
+```{r,include=TRUE,warning=FALSE,message=FALSE}
+
+# Usual transformations for cleaning the test
+brexit_tweetCorpus <- tm_map(brexit_tweetCorpus, tolower)
+brexit_tweetCorpus <- tm_map(brexit_tweetCorpus, removePunctuation)
+brexit_tweetCorpus <- tm_map(brexit_tweetCorpus, removeNumbers)
+removeURL <- function(x) gsub("http[[:alnum:]]*", "", x) # remove URLs
+brexit_tweetCorpus <- tm_map(brexit_tweetCorpus, removeURL)
+twtrStopWords <- c(stopwords("english"),'with','the','an')
+brexit_tweetCorpus <- tm_map(brexit_tweetCorpus, removeWords, twtrStopWords) # remove stop words
+
+# Remove the search words, Which is obvious to be very frequent.
+brexit_tweetCorpus <- tm_map(brexit_tweetCorpus, removeWords, c("brexit"))
+inspect(brexit_tweetCorpus)
+head(brexit_tweetCorpus)
+head(brexit_tweets)
+```
+
+### Create a Document Term Matrix
+```{r,include=TRUE,warning=FALSE,message=FALSE}
+brexit_tweetDTM <- DocumentTermMatrix(brexit_tweetCorpus,list(termFreq=1))
+inspect(brexit_tweetDTM)
+
+# set save defaults using option:
+path <- setwd("C:/DSLA/Twitter/Brexit_analysis")
+saveRDS(brexit_tweetDTM,'./path', ascii = TRUE)
+head(brexit_tweetDTM)
+```
+
+### Finding the frequency terms
+
+```{r,include=TRUE,warning=FALSE,message=FALSE}
+
+# Find frequent terms
+brexit_freqTerms<-findFreqTerms(brexit_tweetDTM,lowfreq = 10)
+head(brexit_freqTerms)
+
+# Find their frequencies
+brexit_term.freq<-colSums(as.matrix(brexit_tweetDTM))
+brexit_term.freq.df<-data.frame(term = names(brexit_term.freq),freq=brexit_term.freq)
+head(brexit_term.freq.df)
+```
+
+### Visualizing the Wordcloud
+```{r,include=TRUE,warning=FALSE,message=FALSE}
+# Add random order = FALSE to get the bigger words in the center.
+# Set the scale(Max_wordsize,min_wordsize) to make the fonts readable
+wordcloud(words = brexit_freqTerms,
+          freq = brexit_term.freq.df[brexit_term.freq.df$term %in% brexit_freqTerms,2],
+          max.words = 100,
+          color = rainbow(50),random.color = T, random.order = FALSE,scale = c(3.7,1.0))
+names(brexit_term.freq)
+```
+
+### Data Exploration for Sentimental Analysis
+```{r,include=TRUE,warning=FALSE,message=FALSE}
+#Check for any NA values
+any(is.na(brexit_freqTerms))
+
+# we see no missing values in the dataset.
+
+
+# Find word associations for the term "remain"
+term.association<-findAssocs(brexit_tweetDTM,terms = "remain",corlimit = 0.2)
+# Plot it
+term.assoc.freq <- rowSums(as.matrix(term.association$remain))
+remainDF <- data.frame(term=names(term.association$remain),freq=term.association$remain)
+g_remain <-ggplot(remainDF,aes(x=term,y=freq)) +
+  geom_bar(stat = "identity", fill = "green") +
+  xlab("Terms")+
+  ylab("Associations to the teem 'remain")+
+  coord_flip()
+# g_remain
+
+# term association for term "leave"
+term.association2 <- findAssocs(brexit_tweetDTM,terms = "leave", corlimit = 0.2)
+# Plot it
+term.assoc.freq2 <- rowSums(as.matrix(term.association2$leave))
+leaveDF <- data.frame(term=names(term.association2$leave),freq=term.association2$leave)
+g_leave <-ggplot(leaveDF,aes(x=term,y=freq)) +
+  geom_bar(stat = "identity",fill = "#FF6666")+
+  xlab("Terms") + 
+  ylab("Associations to the term 'leave'")+
+  coord_flip()
+ g_leave
+
+library(gridExtra)
+par(mfrow = c(1,2))
+grid.arrange(g_remain,g_leave, nrow=1, ncol=2)
+```
+
+### Sentiments Functions
+```{r,include=TRUE,warning=FALSE,message=FALSE}
+
+library(plyr)
+library(stringr)
+
+score.sentiment = function(sentences, pos.words, neg.words, .progress = 'none')
+{
+  require(plyr)
+  require(stringr)
+  scores <- laply(sentences, function(sentence, pos.words, neg.words){
+    sentence <- gsub('[[:punct:]]', "", sentence)
+    sentence <- gsub('[[:cntrl:]]', "", sentence)
+    sentence <- gsub('\\d+', "", sentence)
+    sentence <- tolower(sentence)
+    word.list <- str_split(sentence, '\\s+')
+    words <- unlist(word.list)
+    pos.matches <- match(words, pos.words)
+    neg.matches <- match(words, neg.words)
+    pos.matches <- !is.na(pos.matches)
+    neg.matches <- !is.na(neg.matches)
+    score <- sum(pos.matches) - sum(neg.matches)
+    return(score)
+  },
+  pos.words, neg.words, .progress=.progress)
+  scores.df <- data.frame(score=scores, text=sentences)
+  return(scores.df)
+}
+```
+
+### Scoring Tweets & Adding a column      
+``````{r,include=TRUE,warning=FALSE,message=FALSE}
+
+#Load sentiment word lists
+list.pos = scan('C:/DSLA/Twitter/Brexit_analysis/positive-words.txt', what='character', comment.char=';')
+list.neg = scan('C:/DSLA/Twitter/Brexit_analysis/negative-words.txt', what='character', comment.char=';')
+
+#Add words to list
+pos.words = c(list.pos, 'upgrade')
+neg.words = c(list.neg, 'wtf', 'wait','waiting', 'epicfail', 'mechanical')
+
+#Import 3 csv
+DatasetBrexit <- read.csv("C:/DSLA/Twitter/Brexit_analysis/brexit.df.csv")
+head(DatasetBrexit)
+DatasetBrexit$text<-as.factor(DatasetBrexit$text)
+```
+
+### Score the sentiments of all tweets
+```{r,include=TRUE,warning=FALSE,message=FALSE}
+brexit_tweet.scores <- score.sentiment(DatasetBrexit$text,pos.words,neg.words,.progress = "text")
+setwd("C:/DSLA/Twitter/Brexit_analysis")
+write.csv(brexit_tweet.scores, file = paste("C:/DSLA/Twitter/Brexit_analysis/brexitScores.csv",sep = " "), row.names = TRUE)
+View(brexit_tweet.scores)
+```
+
+### Visualize the sentiments of the tweets
+```{r,include=TRUE,warning=FALSE,message=FALSE}
+hist(brexit_tweet.scores$score, main = "Scores of each tweet", xlab = "Scores", border="blue", col = "green")
+
+# The above histogram shows the frequency of tweets w.r to the scores calculated for each tweets
+#  The x-axis shows the score od each tweet as a negative or positive integer or zero
+#  A positive score represents positive or good sentiments associated with that particulat tweet.
+#  A score of zero indicates aneutral sentiment.
+#  The more positive the score, the more positive the sentiments of the person tweeting.
+
+qplot(brexit_tweet.scores$score,bins = 30,main = "Scores of each tweet", xlab = "Scores", border="blue", col = "green")
+
+### Out of 3000 tweets that we fetched with "#brexit" 
+### A majority of them more then 1000 are neutral.
+### Around 800 have positive sentiments
+### 500-600 tweets show negative sentiments
+```
+
+``````{r,include=TRUE,warning=FALSE,message=FALSE}
+hist(brexit_tweet.scores$score, main = "Scores of each tweet", xlab = "Scores", border="blue", col = "green")
+
+# The above histogram shows the frequency of tweets w.r to the scores calculated for each tweets
+#  The x-axis shows the score od each tweet as a negative or positive integer or zero
+#  A positive score represents positive or good sentiments associated with that particulat tweet.
+#  A score of zero indicates aneutral sentiment.
+#  The more positive the score, the more positive the sentiments of the person tweeting.
+
+qplot(brexit_tweet.scores$score,bins = 30,main = "Scores of each tweet", xlab = "Scores", border="blue", col = "green")
+
+# Out of 3000 tweets that we fetched with "#brexit" 
+# A majority of them more then 1000 are neutral.
+# Around 800 have positive sentiments
+# 500-600 tweets show negative sentiments
