@@ -211,7 +211,7 @@ g_leave <-ggplot(leaveDF,aes(x=term,y=freq)) +
   xlab("Terms") + 
   ylab("Associations to the term 'leave'")+
   coord_flip()
- g_leave
+ #g_leave
 
 library(gridExtra)
 par(mfrow = c(1,2))
@@ -274,23 +274,6 @@ View(brexit_tweet.scores)
 ```
 
 ### Visualize the sentiments of the tweets
-```{r,include=TRUE,warning=FALSE,message=FALSE}
-hist(brexit_tweet.scores$score, main = "Scores of each tweet", xlab = "Scores", border="blue", col = "green")
-
-# The above histogram shows the frequency of tweets w.r to the scores calculated for each tweets
-#  The x-axis shows the score od each tweet as a negative or positive integer or zero
-#  A positive score represents positive or good sentiments associated with that particulat tweet.
-#  A score of zero indicates aneutral sentiment.
-#  The more positive the score, the more positive the sentiments of the person tweeting.
-
-qplot(brexit_tweet.scores$score,bins = 30,main = "Scores of each tweet", xlab = "Scores", border="blue", col = "green")
-
-### Out of 3000 tweets that we fetched with "#brexit" 
-### A majority of them more then 1000 are neutral.
-### Around 800 have positive sentiments
-### 500-600 tweets show negative sentiments
-```
-
 ``````{r,include=TRUE,warning=FALSE,message=FALSE}
 hist(brexit_tweet.scores$score, main = "Scores of each tweet", xlab = "Scores", border="blue", col = "green")
 
